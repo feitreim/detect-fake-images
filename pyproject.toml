@@ -1,0 +1,29 @@
+[project]
+name = "aivideodetector"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "torch",
+    "torchvision",
+    "numpy",
+    "pandas",
+    "pyarrow",
+    "wandb",
+    "huggingface_hub",
+    "av",
+    "tqdm",
+    "requests",
+]
+
+[project.optional-dependencies]
+gen = [
+    "diffusers",
+    "transformers",
+    "accelerate",
+    "safetensors",
+    "sentencepiece",
+    "protobuf",
+]
+
+[tool.uv]
+package = false
