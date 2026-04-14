@@ -7,7 +7,7 @@ import torch
 import torch.nn as nn
 from torch.amp import autocast
 
-from src.model import build_model
+from src.model import build_model, VIT_CONFIGS
 from src.dataset import make_loader
 
 
@@ -77,10 +77,11 @@ def evaluate(model, loader, device, loss_fn, max_batches=None):
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--cache-dir", default="cache")
-    p.add_argument("--size", default="small", choices=["tiny", "small", "medium"])
+    p.add_argument("--size", default="cnn-s")
     p.add_argument("--crop-size", type=int, default=64)
     p.add_argument("--patch-size", type=int, default=8)
-    p.add_argument("--batch-size", type=int, default=128)
+    p.add_argument("--batch-size", type=int, default=64,
+                   help="number of pairs per batch — actual batch is 2x (one real + one fake per pair)")
     p.add_argument("--total-steps", type=int, default=20000)
     p.add_argument("--warmup-steps", type=int, default=1000)
     p.add_argument("--muon-lr", type=float, default=0.02)
@@ -111,29 +112,23 @@ def main():
     wandb.init(project=args.wandb_project, name=run_name, config=vars(args), mode=args.wandb_mode)
 
     model = build_model(args.size, crop_size=args.crop_size, patch_size=args.patch_size).to(device)
-    muon_params, adamw_params = split_params(model)
-
-    n_muon = sum(p.numel() for p in muon_params)
-    n_adamw = sum(p.numel() for p in adamw_params)
+    use_muon = args.size in VIT_CONFIGS
     n_total = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    assert n_muon + n_adamw == n_total, f"split mismatch: {n_muon}+{n_adamw} != {n_total}"
-    print(f"params: muon={n_muon:,}  adamw={n_adamw:,}  total={n_total:,}")
 
-    if not hasattr(torch.optim, "Muon"):
-        raise RuntimeError("torch.optim.Muon not found — upgrade PyTorch")
-    muon = torch.optim.Muon(
-        muon_params,
-        lr=args.muon_lr,
-        momentum=0.95,
-        nesterov=True,
-        weight_decay=args.weight_decay,
-    )
-    adamw = torch.optim.AdamW(
-        adamw_params,
-        lr=args.adamw_lr,
-        betas=(0.9, 0.95),
-        weight_decay=args.weight_decay,
-    )
+    if use_muon:
+        muon_params, adamw_params = split_params(model)
+        n_muon = sum(p.numel() for p in muon_params)
+        print(f"params: muon={n_muon:,}  adamw={n_total - n_muon:,}  total={n_total:,}")
+        muon = torch.optim.Muon(muon_params, lr=args.muon_lr, momentum=0.95,
+                                nesterov=True, weight_decay=args.weight_decay)
+        adamw = torch.optim.AdamW(adamw_params, lr=args.adamw_lr, betas=(0.9, 0.95),
+                                  weight_decay=args.weight_decay)
+        optimizers = [muon, adamw]
+    else:
+        print(f"params: {n_total:,} (AdamW only)")
+        adamw = torch.optim.AdamW(model.parameters(), lr=args.adamw_lr, betas=(0.9, 0.95),
+                                  weight_decay=args.weight_decay)
+        optimizers = [adamw]
 
     loss_fn = nn.BCEWithLogitsLoss()
     use_amp = device == "cuda"
@@ -162,30 +157,38 @@ def main():
             labels = labels.to(device, non_blocking=True).float()
 
             s = lr_scale(step, args.warmup_steps, args.total_steps)
-            for g in muon.param_groups:
-                g["lr"] = args.muon_lr * s
-            for g in adamw.param_groups:
-                g["lr"] = args.adamw_lr * s
-
-            muon.zero_grad(set_to_none=True)
-            adamw.zero_grad(set_to_none=True)
+            for opt in optimizers:
+                for g in opt.param_groups:
+                    base_lr = args.muon_lr if (use_muon and opt is optimizers[0]) else args.adamw_lr
+                    g["lr"] = base_lr * s
+            for opt in optimizers:
+                opt.zero_grad(set_to_none=True)
 
             with autocast(device_type=device if device != "mps" else "cpu", dtype=amp_dtype, enabled=use_amp):
                 logits = model(frames)
                 loss = loss_fn(logits, labels)
 
+            if device == "mps":
+                torch.mps.synchronize()
+            loss_val = loss.item()
+            train_acc = ((logits.detach() > 0).float() == labels).float().mean().item()
+
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip)
-            muon.step()
-            adamw.step()
+            for opt in optimizers:
+                opt.step()
 
             if step % args.log_every == 0:
-                wandb.log({
-                    "loss/train": loss.item(),
+                log_dict = {
+                    "loss/train": loss_val,
+                    "acc/train": train_acc,
                     "lr/muon": args.muon_lr * s,
                     "lr/adamw": args.adamw_lr * s,
                     "step_per_s": (step + 1) / (time.time() - t0),
-                }, step=step)
+                }
+                wandb.log(log_dict, step=step)
+                if step % (args.log_every * 5) == 0:
+                    print(f"  [{step}] loss={loss_val:.4f} acc={train_acc:.3f} lr_muon={args.muon_lr*s:.4f}")
 
             if step > 0 and step % args.eval_every == 0:
                 metrics, wrong = evaluate(model, val_loader, device, loss_fn, max_batches=50)

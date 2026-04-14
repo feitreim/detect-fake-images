@@ -7,6 +7,38 @@ IMAGENET_MEAN = torch.tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1, 1)
 IMAGENET_STD = torch.tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1, 1)
 
 
+# --- CNN ---
+
+class SmallCNN(nn.Module):
+    """Tiny 3D CNN for real-vs-fake on (B, T=3, C=3, H, W) crops."""
+
+    def __init__(self, channels=(16, 32, 64), dropout=0.3):
+        super().__init__()
+        self.register_buffer("mean", IMAGENET_MEAN, persistent=False)
+        self.register_buffer("std", IMAGENET_STD, persistent=False)
+
+        c0, c1, c2 = channels
+        self.conv1 = nn.Conv3d(3, c0, kernel_size=(3, 3, 3), stride=(3, 1, 1), padding=(0, 1, 1))
+        self.conv2 = nn.Conv2d(c0, c1, 3, stride=2, padding=1)
+        self.conv3 = nn.Conv2d(c1, c2, 3, stride=2, padding=1)
+        self.drop = nn.Dropout(dropout)
+        self.head = nn.Linear(c2, 1)
+
+    def forward(self, x):
+        if x.dtype == torch.uint8:
+            x = x.float() / 255.0
+        x = x.permute(0, 2, 1, 3, 4)
+        x = (x - self.mean) / self.std
+        x = F.relu(self.conv1(x)).squeeze(2)  # (B, c0, H, W)
+        x = F.relu(self.conv2(x))             # (B, c1, H/2, W/2)
+        x = F.relu(self.conv3(x))             # (B, c2, H/4, W/4)
+        x = x.mean(dim=(-2, -1))              # (B, c2)
+        x = self.drop(x)
+        return self.head(x).squeeze(-1)
+
+
+# --- ViT ---
+
 def drop_path(x, p, training):
     if p == 0.0 or not training:
         return x
@@ -61,31 +93,18 @@ class Block(nn.Module):
 
 
 class VideoViT(nn.Module):
-    def __init__(
-        self,
-        crop_size=64,
-        patch_size=8,
-        num_frames=3,
-        d_model=384,
-        depth=6,
-        heads=6,
-        mlp_ratio=4.0,
-        dropout=0.1,
-        drop_path_rate=0.1,
-    ):
+    def __init__(self, crop_size=64, patch_size=8, num_frames=3, d_model=384,
+                 depth=6, heads=6, mlp_ratio=4.0, dropout=0.1, drop_path_rate=0.1):
         super().__init__()
-        assert crop_size % patch_size == 0, f"crop_size={crop_size} not divisible by patch_size={patch_size}"
+        assert crop_size % patch_size == 0
         self.crop_size = crop_size
         self.patch_size = patch_size
         self.num_frames = num_frames
         grid = crop_size // patch_size
         self.num_patches = grid * grid
 
-        self.patch_embed = nn.Conv3d(
-            3, d_model,
-            kernel_size=(num_frames, patch_size, patch_size),
-            stride=(num_frames, patch_size, patch_size),
-        )
+        self.patch_embed = nn.Conv3d(3, d_model, kernel_size=(num_frames, patch_size, patch_size),
+                                     stride=(num_frames, patch_size, patch_size))
         self.cls_token = nn.Parameter(torch.zeros(1, 1, d_model))
         self.pos_embed = nn.Parameter(torch.zeros(1, self.num_patches + 1, d_model))
         dpr = [drop_path_rate * i / max(1, depth - 1) for i in range(depth)]
@@ -101,21 +120,18 @@ class VideoViT(nn.Module):
     def _init_weights(self, m):
         if isinstance(m, nn.Linear):
             nn.init.trunc_normal_(m.weight, std=0.02)
-            if m.bias is not None:
-                nn.init.zeros_(m.bias)
+            if m.bias is not None: nn.init.zeros_(m.bias)
         elif isinstance(m, nn.Conv3d):
             nn.init.trunc_normal_(m.weight, std=0.02)
-            if m.bias is not None:
-                nn.init.zeros_(m.bias)
+            if m.bias is not None: nn.init.zeros_(m.bias)
 
     def forward(self, x):
-        # x: (B, T, C=3, H=crop_size, W=crop_size), uint8 or float
         if x.dtype == torch.uint8:
             x = x.float() / 255.0
-        x = x.permute(0, 2, 1, 3, 4)  # (B, C, T, H, W)
+        x = x.permute(0, 2, 1, 3, 4)
         x = (x - self.mean) / self.std
-        x = self.patch_embed(x)  # (B, d, 1, grid, grid)
-        x = x.flatten(2).transpose(1, 2)  # (B, num_patches, d)
+        x = self.patch_embed(x)
+        x = x.flatten(2).transpose(1, 2)
         cls = self.cls_token.expand(x.shape[0], -1, -1)
         x = torch.cat([cls, x], dim=1)
         x = x + self.pos_embed
@@ -125,13 +141,24 @@ class VideoViT(nn.Module):
         return self.head(x).squeeze(-1)
 
 
-CONFIGS = {
+# --- factory ---
+
+VIT_CONFIGS = {
     "tiny":   dict(d_model=192, depth=4, heads=3, mlp_ratio=4.0),
     "small":  dict(d_model=384, depth=6, heads=6, mlp_ratio=4.0),
     "medium": dict(d_model=512, depth=8, heads=8, mlp_ratio=4.0),
 }
 
+CNN_CONFIGS = {
+    "cnn-xs":  dict(channels=(8, 16, 32), dropout=0.5),
+    "cnn-s":   dict(channels=(16, 32, 64), dropout=0.3),
+    "cnn-m":   dict(channels=(32, 64, 128), dropout=0.3),
+}
 
-def build_model(size="small", crop_size=64, patch_size=8, **overrides):
-    cfg = {**CONFIGS[size], "crop_size": crop_size, "patch_size": patch_size, **overrides}
+
+def build_model(size="cnn-s", crop_size=64, patch_size=8, **overrides):
+    if size.startswith("cnn"):
+        cfg = {**CNN_CONFIGS[size], **overrides}
+        return SmallCNN(**cfg)
+    cfg = {**VIT_CONFIGS[size], "crop_size": crop_size, "patch_size": patch_size, **overrides}
     return VideoViT(**cfg)

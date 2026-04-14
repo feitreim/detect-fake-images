@@ -27,8 +27,6 @@ def run(checkpoint, cache_dir, split, batch_size, device, out_csv):
     total_loss, n = 0.0, 0
     correct, correct_real, correct_fake = 0, 0, 0
     n_real, n_fake = 0, 0
-    per_k = {}
-
     rows = []
     for frames, labels in loader:
         frames = frames.to(device, non_blocking=True)

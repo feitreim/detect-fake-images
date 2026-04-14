@@ -18,7 +18,7 @@ def main():
     device = "cpu"  # Muon may not support mps; keep smoke test portable
     print(f"device: {device}")
 
-    model = build_model("small").to(device)
+    model = build_model("small", crop_size=64, patch_size=8).to(device)
     n_total = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f"total params: {n_total:,}")
 

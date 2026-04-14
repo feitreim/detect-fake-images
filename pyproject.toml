@@ -17,6 +17,10 @@ dependencies = [
 
 [project.optional-dependencies]
 gen = [
+    "fal-client",
+    "Pillow",
+]
+gen-local = [
     "diffusers",
     "transformers",
     "accelerate",
