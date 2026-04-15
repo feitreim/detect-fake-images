@@ -9,7 +9,7 @@ import argparse
 import numpy as np
 from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import accuracy_score, balanced_accuracy_score, roc_auc_score, classification_report
+from sklearn.metrics import accuracy_score, balanced_accuracy_score, roc_auc_score, classification_report, confusion_matrix
 
 
 def main():
@@ -39,7 +39,7 @@ def main():
     X_val = scaler.transform(X_val)
 
     for C in [0.01, 0.1, 1.0, 10.0]:
-        clf = LogisticRegression(C=C, max_iter=1000, solver="lbfgs")
+        clf = LogisticRegression(C=C, max_iter=1000, solver="lbfgs", class_weight="balanced")
         clf.fit(X_train, y_train)
 
         train_acc = accuracy_score(y_train, clf.predict(X_train))
@@ -52,10 +52,16 @@ def main():
 
     # detailed report for best C
     print("\n--- detailed (C=1.0) ---")
-    clf = LogisticRegression(C=1.0, max_iter=1000, solver="lbfgs")
+    clf = LogisticRegression(C=1.0, max_iter=1000, solver="lbfgs", class_weight="balanced")
     clf.fit(X_train, y_train)
     val_pred = clf.predict(X_val)
     print(classification_report(y_val, val_pred, target_names=["real", "fake"]))
+
+    cm = confusion_matrix(y_val, val_pred)
+    print("confusion matrix (rows=actual, cols=predicted):")
+    print(f"           pred_real  pred_fake")
+    print(f"  real     {cm[0,0]:>9}  {cm[0,1]:>9}")
+    print(f"  fake     {cm[1,0]:>9}  {cm[1,1]:>9}")
 
     # feature importance
     coefs = np.abs(clf.coef_[0])
