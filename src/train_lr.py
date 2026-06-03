@@ -18,7 +18,7 @@ def main():
     p.add_argument("--C", type=float, default=1.0, help="inverse regularization strength")
     args = p.parse_args()
 
-    data = np.load(args.features)
+    data = np.load(args.features, allow_pickle=True)
     X_train, y_train = data["X_train"], data["y_train"]
     X_val, y_val = data["X_val"], data["y_val"]
     print(f"train: {len(X_train)} ({y_train.sum():.0f} fake)  val: {len(X_val)} ({y_val.sum():.0f} fake)")
@@ -63,16 +63,20 @@ def main():
     print(f"  real     {cm[0,0]:>9}  {cm[0,1]:>9}")
     print(f"  fake     {cm[1,0]:>9}  {cm[1,1]:>9}")
 
-    # feature importance
+    # feature importance — names come from the npz when present (image features),
+    # else fall back to the 25-feature video layout.
     coefs = np.abs(clf.coef_[0])
-    names = [
-        "R_mean", "R_std", "G_mean", "G_std", "B_mean", "B_std",
-        "tdiff_mean", "tdiff_std", "tdiff_px_mean", "tdiff_px_std",
-        "dct_hi_R", "dct_hi_G", "dct_hi_B",
-        "pvar_mean_R", "pvar_std_R", "pvar_mean_G", "pvar_std_G", "pvar_mean_B", "pvar_std_B",
-        "noise_R", "noise_G", "noise_B",
-        "edge_R", "edge_G", "edge_B",
-    ]
+    if "feature_names" in data:
+        names = [str(n) for n in data["feature_names"]]
+    else:
+        names = [
+            "R_mean", "R_std", "G_mean", "G_std", "B_mean", "B_std",
+            "tdiff_mean", "tdiff_std", "tdiff_px_mean", "tdiff_px_std",
+            "dct_hi_R", "dct_hi_G", "dct_hi_B",
+            "pvar_mean_R", "pvar_std_R", "pvar_mean_G", "pvar_std_G", "pvar_mean_B", "pvar_std_B",
+            "noise_R", "noise_G", "noise_B",
+            "edge_R", "edge_G", "edge_B",
+        ]
     order = np.argsort(coefs)[::-1]
     print("top features:")
     for i in order[:10]:

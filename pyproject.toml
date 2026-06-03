@@ -13,6 +13,9 @@ dependencies = [
     "av",
     "tqdm",
     "requests",
+    "Pillow",
+    "scipy",
+    "scikit-learn",
 ]
 
 [project.optional-dependencies]
