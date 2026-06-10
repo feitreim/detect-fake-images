@@ -1,7 +1,7 @@
 """Train logistic regression on hand-crafted features.
 
 Usage:
-    python -m src.features              # extract features -> cache/features.npz
+    python -m src.features_images       # extract features -> cache_images/features_*.npz
     python -m src.train_lr              # train + eval
 """
 import argparse
@@ -14,7 +14,7 @@ from sklearn.metrics import accuracy_score, balanced_accuracy_score, roc_auc_sco
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--features", default="cache/features.npz")
+    p.add_argument("--features", default="cache_images/features_jpeg_full.npz")
     p.add_argument("--C", type=float, default=1.0, help="inverse regularization strength")
     args = p.parse_args()
 

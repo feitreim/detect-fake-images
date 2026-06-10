@@ -1,16 +1,13 @@
 [project]
-name = "aivideodetector"
+name = "detect-fake-images"
 version = "0.1.0"
 requires-python = ">=3.11"
 dependencies = [
     "torch",
-    "torchvision",
     "numpy",
     "pandas",
     "pyarrow",
-    "wandb",
     "huggingface_hub",
-    "av",
     "tqdm",
     "requests",
     "Pillow",
@@ -19,10 +16,6 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-gen = [
-    "fal-client",
-    "Pillow",
-]
 gen-local = [
     "diffusers",
     "transformers",
