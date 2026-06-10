@@ -9,13 +9,14 @@ Usage:
     python -m src.train_cnn --cache-dir cache_images/jpeg_full --model vit  # tiny ViT
 """
 import argparse
+import json
 from pathlib import Path
 
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from sklearn.metrics import accuracy_score, balanced_accuracy_score, roc_auc_score
+from sklearn.metrics import accuracy_score, balanced_accuracy_score, roc_auc_score, confusion_matrix
 from torch.utils.data import IterableDataset, DataLoader, get_worker_info
 
 IMAGENET_MEAN = torch.tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1)
@@ -197,7 +198,15 @@ def evaluate(model, loader, device):
     return dict(acc=accuracy_score(labels, pred),
                 bal=balanced_accuracy_score(labels, pred),
                 auc=roc_auc_score(labels, probs),
+                cm=confusion_matrix(labels, pred),
                 n=len(labels))
+
+
+def print_confusion(cm):
+    print("confusion matrix (rows=actual, cols=predicted):")
+    print("           pred_real  pred_fake")
+    print(f"  real     {cm[0,0]:>9}  {cm[0,1]:>9}")
+    print(f"  fake     {cm[1,0]:>9}  {cm[1,1]:>9}")
 
 
 def main():
@@ -209,6 +218,7 @@ def main():
     p.add_argument("--lr", type=float, default=3e-4)
     p.add_argument("--weight-decay", type=float, default=1e-4)
     p.add_argument("--workers", type=int, default=4)
+    p.add_argument("--out", default=None, help="output dir for weights+metrics (default runs_images/<model>)")
     args = p.parse_args()
 
     device = pick_device()
@@ -239,6 +249,15 @@ def main():
               f"val_acc={m['acc']:.3f}  val_bal={m['bal']:.3f}  val_auc={m['auc']:.3f}  (n={m['n']})")
 
     print(f"\nFINAL [{args.model}]  val_acc={m['acc']:.3f}  val_bal={m['bal']:.3f}  val_auc={m['auc']:.3f}")
+    print_confusion(m["cm"])
+
+    out = Path(args.out) if args.out else Path("runs_images") / args.model
+    out.mkdir(parents=True, exist_ok=True)
+    torch.save(dict(model=model.state_dict(), args=vars(args)), out / "final.pt")
+    metrics = dict(acc=float(m["acc"]), bal=float(m["bal"]), auc=float(m["auc"]),
+                   n=m["n"], confusion=m["cm"].tolist())
+    (out / "metrics.json").write_text(json.dumps(metrics, indent=2))
+    print(f"saved weights + metrics to {out}/")
 
 
 if __name__ == "__main__":
