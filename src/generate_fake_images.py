@@ -19,6 +19,7 @@ Usage (on the GPU box):
     python -m src.generate_fake_images --max-images 20      # dry run
     python -m src.generate_fake_images                      # full run
 """
+
 import argparse
 import hashlib
 import time
@@ -30,7 +31,7 @@ import pandas as pd
 
 def seed_for(image_id, base):
     h = int(hashlib.md5(str(image_id).encode()).hexdigest()[:8], 16)
-    return (base + h) % (2 ** 31 - 1)
+    return (base + h) % (2**31 - 1)
 
 
 class Backend:
@@ -51,6 +52,7 @@ class Backend:
 
     def generate(self, prompt, seed, height, width, steps, guidance):
         import torch
+
         image = self.pipe(
             prompt=prompt,
             height=height,
@@ -74,6 +76,7 @@ class FluxKlein(Backend):
 
     def build(self, cpu_offload):
         from diffusers import Flux2KleinPipeline
+
         pipe = Flux2KleinPipeline.from_pretrained(self.repo, torch_dtype=self.dtype)
         if cpu_offload:
             pipe.enable_model_cpu_offload()
@@ -90,6 +93,7 @@ class SDXLTurbo(Backend):
 
     def build(self, cpu_offload):
         from diffusers import AutoPipelineForText2Image
+
         pipe = AutoPipelineForText2Image.from_pretrained(self.model_version, torch_dtype=self.dtype, variant="fp16")
         pipe.to(self.device)
         return pipe
@@ -113,8 +117,12 @@ def main():
     p.add_argument("--real-manifest", default="data/real_images_manifest.parquet")
     p.add_argument("--out-dir", default="data/fake_images")
     p.add_argument("--manifest", default="data/fake_images_manifest.parquet")
-    p.add_argument("--resolution", type=int, default=768,
-                   help="768 keeps the fake->256 downscale ratio (3x) close to the reals' (~2.5x)")
+    p.add_argument(
+        "--resolution",
+        type=int,
+        default=768,
+        help="768 keeps the fake->256 downscale ratio (3x) close to the reals' (~2.5x)",
+    )
     p.add_argument("--steps", type=int, default=None, help="override backend default")
     p.add_argument("--guidance", type=float, default=None)
     p.add_argument("--seed-base", type=int, default=0)
@@ -157,18 +165,20 @@ def main():
             if not out_path.exists():
                 image = backend.generate(caption, seed, args.resolution, args.resolution, steps, guidance)
                 image.save(out_path)
-            rows.append({
-                "image_id": image_id,
-                "image_path": str(out_path.resolve()),
-                "caption": caption,
-                "model_name": backend.model_name,
-                "model_version": backend.model_version,
-                "seed": int(seed),
-                "steps": int(steps),
-                "guidance": float(guidance),
-                "width": args.resolution,
-                "height": args.resolution,
-            })
+            rows.append(
+                {
+                    "image_id": image_id,
+                    "image_path": str(out_path.resolve()),
+                    "caption": caption,
+                    "model_name": backend.model_name,
+                    "model_version": backend.model_version,
+                    "seed": int(seed),
+                    "steps": int(steps),
+                    "guidance": float(guidance),
+                    "width": args.resolution,
+                    "height": args.resolution,
+                }
+            )
             done += 1
         except Exception as e:
             fails += 1

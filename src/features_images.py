@@ -8,6 +8,7 @@ frame-diff features that only exist for video. 21 features per (C=3, H=64, W=64)
 - Noise residual magnitude: blur, subtract, measure mean abs per channel (3)
 - Edge energy: Sobel magnitude mean per channel (3)
 """
+
 import argparse
 from pathlib import Path
 
@@ -18,11 +19,27 @@ from scipy.ndimage import gaussian_filter, sobel
 from tqdm import tqdm
 
 FEATURE_NAMES = [
-    "R_mean", "R_std", "G_mean", "G_std", "B_mean", "B_std",
-    "dct_hi_R", "dct_hi_G", "dct_hi_B",
-    "pvar_mean_R", "pvar_std_R", "pvar_mean_G", "pvar_std_G", "pvar_mean_B", "pvar_std_B",
-    "noise_R", "noise_G", "noise_B",
-    "edge_R", "edge_G", "edge_B",
+    "R_mean",
+    "R_std",
+    "G_mean",
+    "G_std",
+    "B_mean",
+    "B_std",
+    "dct_hi_R",
+    "dct_hi_G",
+    "dct_hi_B",
+    "pvar_mean_R",
+    "pvar_std_R",
+    "pvar_mean_G",
+    "pvar_std_G",
+    "pvar_mean_B",
+    "pvar_std_B",
+    "noise_R",
+    "noise_G",
+    "noise_B",
+    "edge_R",
+    "edge_G",
+    "edge_B",
 ]
 
 
@@ -40,15 +57,15 @@ def extract_features(crop):
     # 2. DCT high-freq energy per channel (3)
     for c in range(C):
         dct = dctn(x[c], norm="ortho")
-        total = (dct ** 2).sum()
-        hi = (dct[H // 2:, W // 2:] ** 2).sum()
+        total = (dct**2).sum()
+        hi = (dct[H // 2 :, W // 2 :] ** 2).sum()
         feats.append(hi / (total + 1e-10))
 
     # 3. patch variance stats — 8x8 patches (6)
     ps = 8
     for c in range(C):
         frame = x[c]
-        patches = frame[:H - H % ps, :W - W % ps].reshape(H // ps, ps, W // ps, ps)
+        patches = frame[: H - H % ps, : W - W % ps].reshape(H // ps, ps, W // ps, ps)
         patch_vars = patches.var(axis=(1, 3)).flatten()
         feats.append(patch_vars.mean())
         feats.append(patch_vars.std())
@@ -61,7 +78,7 @@ def extract_features(crop):
     # 5. edge energy — sobel (3)
     for c in range(C):
         sx, sy = sobel(x[c], axis=0), sobel(x[c], axis=1)
-        feats.append(np.sqrt(sx ** 2 + sy ** 2).mean())
+        feats.append(np.sqrt(sx**2 + sy**2).mean())
 
     return np.array(feats, dtype=np.float32)
 
@@ -95,8 +112,9 @@ def main():
     y_val = np.concatenate([np.zeros(len(val_real)), np.ones(len(val_fake))])
 
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)
-    np.savez(args.out, X_train=X_train, y_train=y_train, X_val=X_val, y_val=y_val,
-             feature_names=np.array(FEATURE_NAMES))
+    np.savez(
+        args.out, X_train=X_train, y_train=y_train, X_val=X_val, y_val=y_val, feature_names=np.array(FEATURE_NAMES)
+    )
     print(f"saved {args.out}: train={len(X_train)} val={len(X_val)} features={X_train.shape[1]}")
 
 

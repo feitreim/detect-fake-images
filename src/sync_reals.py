@@ -8,6 +8,7 @@ on disk.
 Usage:
     python -m src.sync_reals          # download reals for every local fake id
 """
+
 import argparse
 import traceback
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -34,8 +35,7 @@ def main():
     real_dir = Path(args.real_dir)
     real_dir.mkdir(parents=True, exist_ok=True)
 
-    url_map = dict(zip(pd.read_parquet(args.urls)["image_id"].astype(int),
-                       pd.read_parquet(args.urls)["coco_url"]))
+    url_map = dict(zip(pd.read_parquet(args.urls)["image_id"].astype(int), pd.read_parquet(args.urls)["coco_url"]))
 
     fake_ids = {int(p.stem) for p in Path(args.fake_dir).glob("*.png")}
     todo = [i for i in fake_ids if not (real_dir / f"{i}.jpg").exists() and i in url_map]

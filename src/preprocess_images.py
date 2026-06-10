@@ -18,6 +18,7 @@ Usage:
     python -m src.preprocess_images --fake-codec jpeg --out-dir cache_images/jpeg
     python -m src.preprocess_images --fake-codec png  --out-dir cache_images/png
 """
+
 import argparse
 import hashlib
 import io
@@ -80,7 +81,7 @@ def sample_crops(img_hwc, n_crops, crop_size, resize_short, rng):
     crops = []
     for _ in range(n_crops):
         t, l = rng.randint(0, H - crop_size), rng.randint(0, W - crop_size)
-        crops.append(img[:, t:t + crop_size, l:l + crop_size].contiguous())
+        crops.append(img[:, t : t + crop_size, l : l + crop_size].contiguous())
     return crops
 
 
@@ -99,7 +100,9 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument("--real-manifest", default="data/real_images_manifest.parquet")
     p.add_argument("--fake-manifest", default="data/fake_images_manifest.parquet")
-    p.add_argument("--real-dir", default="data/real_images", help="locate reals by {dir}/{image_id}.jpg, ignoring manifest paths")
+    p.add_argument(
+        "--real-dir", default="data/real_images", help="locate reals by {dir}/{image_id}.jpg, ignoring manifest paths"
+    )
     p.add_argument("--fake-dir", default="data/fake_images", help="locate fakes by {dir}/{image_id}.png")
     p.add_argument("--out-dir", default="cache_images/jpeg")
     p.add_argument("--fake-codec", default="jpeg", choices=["jpeg", "png"])

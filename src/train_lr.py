@@ -59,7 +59,7 @@ def main():
 
     cm = confusion_matrix(y_val, val_pred)
     print("confusion matrix (rows=actual, cols=predicted):")
-    print(f"           pred_real  pred_fake")
+    print("           pred_real  pred_fake")
     print(f"  real     {cm[0,0]:>9}  {cm[0,1]:>9}")
     print(f"  fake     {cm[1,0]:>9}  {cm[1,1]:>9}")
 

@@ -8,6 +8,7 @@ Usage:
     python -m src.train_cnn --cache-dir cache_images/jpeg_full              # small CNN
     python -m src.train_cnn --cache-dir cache_images/jpeg_full --model vit  # tiny ViT
 """
+
 import argparse
 import json
 from pathlib import Path
@@ -25,6 +26,7 @@ IMAGENET_STD = torch.tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1)
 
 # --- data: paired image shards ({"real","fake"} stacks of uint8 (C,H,W)) ---
 
+
 class ImageShardDataset(IterableDataset):
     def __init__(self, shard_dir, shuffle=True):
         self.shards = sorted(Path(shard_dir).glob("shard-*.pt"))
@@ -34,9 +36,10 @@ class ImageShardDataset(IterableDataset):
 
     def __iter__(self):
         info = get_worker_info()
-        shards = self.shards[info.id::info.num_workers] if info else list(self.shards)
+        shards = self.shards[info.id :: info.num_workers] if info else list(self.shards)
         if self.shuffle:
             import random
+
             random.shuffle(shards)
         for path in shards:
             data = torch.load(path, map_location="cpu", weights_only=True)
@@ -57,12 +60,18 @@ def collate_pairs(batch):
 
 def make_loader(cache_dir, split, batch_size, num_workers=2):
     ds = ImageShardDataset(Path(cache_dir) / split, shuffle=(split == "train"))
-    return DataLoader(ds, batch_size=batch_size, num_workers=num_workers,
-                      persistent_workers=num_workers > 0, drop_last=(split == "train"),
-                      collate_fn=collate_pairs)
+    return DataLoader(
+        ds,
+        batch_size=batch_size,
+        num_workers=num_workers,
+        persistent_workers=num_workers > 0,
+        drop_last=(split == "train"),
+        collate_fn=collate_pairs,
+    )
 
 
 # --- models ---
+
 
 class ImageCNN(nn.Module):
     """Tiny 2D CNN: three strided convs -> global avg pool -> logit."""
@@ -145,8 +154,9 @@ class Block(nn.Module):
 class ImageViT(nn.Module):
     """Tiny ViT over 8x8 patches of a 64x64 crop."""
 
-    def __init__(self, crop_size=64, patch_size=8, d_model=192, depth=4, heads=3,
-                 mlp_ratio=4.0, dropout=0.1, drop_path_rate=0.1):
+    def __init__(
+        self, crop_size=64, patch_size=8, d_model=192, depth=4, heads=3, mlp_ratio=4.0, dropout=0.1, drop_path_rate=0.1
+    ):
         super().__init__()
         grid = crop_size // patch_size
         self.num_patches = grid * grid
@@ -176,6 +186,7 @@ class ImageViT(nn.Module):
 
 # --- train / eval ---
 
+
 def pick_device():
     if torch.backends.mps.is_available():
         return "mps"
@@ -186,11 +197,13 @@ def pick_device():
 
 def metrics(labels, probs):
     pred = (probs >= 0.5).astype(int)
-    return dict(acc=accuracy_score(labels, pred),
-                bal=balanced_accuracy_score(labels, pred),
-                auc=roc_auc_score(labels, probs),
-                cm=confusion_matrix(labels, pred),
-                n=len(labels))
+    return dict(
+        acc=accuracy_score(labels, pred),
+        bal=balanced_accuracy_score(labels, pred),
+        auc=roc_auc_score(labels, probs),
+        cm=confusion_matrix(labels, pred),
+        n=len(labels),
+    )
 
 
 @torch.no_grad()
@@ -203,8 +216,9 @@ def evaluate(model, shard_dir, device, n_crops=None, batch_size=512):
         data = torch.load(shard, map_location="cpu", weights_only=True)
         for label, key in ((0, "real"), (1, "fake")):
             x = data[key]
-            probs = torch.cat([torch.sigmoid(model(x[i:i + batch_size].to(device))).cpu()
-                               for i in range(0, len(x), batch_size)])
+            probs = torch.cat(
+                [torch.sigmoid(model(x[i : i + batch_size].to(device))).cpu() for i in range(0, len(x), batch_size)]
+            )
             crop_labels.append(torch.full((len(x),), label))
             crop_probs.append(probs)
             for image_id, prob in zip(data["image_ids"], probs.tolist()):
@@ -213,15 +227,14 @@ def evaluate(model, shard_dir, device, n_crops=None, batch_size=512):
     crop_probs = torch.cat(crop_probs).numpy()
     image_labels = np.array([label for _, label in per_image])
     image_probs = np.array([np.mean(probs[:n_crops]) for probs in per_image.values()])
-    return dict(crop=metrics(crop_labels, crop_probs),
-                image=metrics(image_labels, image_probs))
+    return dict(crop=metrics(crop_labels, crop_probs), image=metrics(image_labels, image_probs))
 
 
 def print_confusion(cm):
     print("confusion matrix (rows=actual, cols=predicted):")
     print("           pred_real  pred_fake")
-    print(f"  real     {cm[0,0]:>9}  {cm[0,1]:>9}")
-    print(f"  fake     {cm[1,0]:>9}  {cm[1,1]:>9}")
+    print(f"  real     {cm[0, 0]:>9}  {cm[0, 1]:>9}")
+    print(f"  fake     {cm[1, 0]:>9}  {cm[1, 1]:>9}")
 
 
 def main():
@@ -234,8 +247,12 @@ def main():
     p.add_argument("--weight-decay", type=float, default=1e-4)
     p.add_argument("--workers", type=int, default=4)
     p.add_argument("--out", default=None, help="output dir for weights+metrics (default runs_images/<model>)")
-    p.add_argument("--eval-crops", type=int, default=None,
-                   help="crops averaged per image for the image-level call (default: all cached)")
+    p.add_argument(
+        "--eval-crops",
+        type=int,
+        default=None,
+        help="crops averaged per image for the image-level call (default: all cached)",
+    )
     args = p.parse_args()
 
     device = pick_device()
@@ -263,21 +280,28 @@ def main():
             seen += len(y)
         m = evaluate(model, val_dir, device, args.eval_crops)
         c, im = m["crop"], m["image"]
-        print(f"epoch {epoch+1}/{args.epochs}  train_loss={running/seen:.4f}  "
-              f"crop_auc={c['auc']:.3f}  img_acc={im['acc']:.3f}  img_auc={im['auc']:.3f}  (imgs={im['n']})")
+        print(
+            f"epoch {epoch + 1}/{args.epochs}  train_loss={running / seen:.4f}  "
+            f"crop_auc={c['auc']:.3f}  img_acc={im['acc']:.3f}  img_auc={im['auc']:.3f}  (imgs={im['n']})"
+        )
 
     print(f"\nFINAL [{args.model}]  crop:  acc={c['acc']:.3f}  bal={c['bal']:.3f}  auc={c['auc']:.3f}  (n={c['n']})")
-    print(f"FINAL [{args.model}]  image: acc={im['acc']:.3f}  bal={im['bal']:.3f}  auc={im['auc']:.3f}  "
-          f"(n={im['n']}, avg over {args.eval_crops or 'all'} crops)")
+    print(
+        f"FINAL [{args.model}]  image: acc={im['acc']:.3f}  bal={im['bal']:.3f}  auc={im['auc']:.3f}  "
+        f"(n={im['n']}, avg over {args.eval_crops or 'all'} crops)"
+    )
     print_confusion(im["cm"])
 
     out = Path(args.out) if args.out else Path("runs_images") / args.model
     out.mkdir(parents=True, exist_ok=True)
     torch.save(dict(model=model.state_dict(), args=vars(args)), out / "final.pt")
-    jsonable = lambda d: dict(acc=float(d["acc"]), bal=float(d["bal"]), auc=float(d["auc"]),
-                              n=d["n"], confusion=d["cm"].tolist())
-    (out / "metrics.json").write_text(json.dumps(
-        dict(crop=jsonable(c), image=jsonable(im), eval_crops=args.eval_crops), indent=2))
+
+    def jsonable(d):
+        return dict(acc=float(d["acc"]), bal=float(d["bal"]), auc=float(d["auc"]), n=d["n"], confusion=d["cm"].tolist())
+
+    (out / "metrics.json").write_text(
+        json.dumps(dict(crop=jsonable(c), image=jsonable(im), eval_crops=args.eval_crops), indent=2)
+    )
     print(f"saved weights + metrics to {out}/")
 
 
