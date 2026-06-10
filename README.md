@@ -21,14 +21,15 @@ scene exists as both a real photo and its synthetic twin.
 
 ## Results — non-neural baseline vs. a small CNN
 
-Both models see the *identical* crops: 589,504 train / 66,288 val, per-crop,
-jpeg-matched.
+All models see the *identical* crops: 589,504 train / 66,288 val (8 crops each
+of 8,286 val images), jpeg-matched. "Crop" columns score each 64×64 crop alone;
+"image" columns average the 8 crop scores per image before thresholding.
 
-| Model                            | Params    | Val Acc | Val Balanced Acc | Val AUROC |
-| -------------------------------- | --------- | ------- | ---------------- | --------- |
-| Logistic regression (21 feats)   | 25        | 70.0%   | 70.0%            | 0.758     |
-| Small 2D CNN (raw pixels)        | 93,377    | 87.9%   | 87.9%            | 0.950     |
-| **Tiny ViT** (8×8 patches)       | 1,829,761 | **88.6%** | **88.6%**      | **0.958** |
+| Model                            | Params    | Crop Acc  | Crop AUROC | Image Acc | Image AUROC |
+| -------------------------------- | --------- | --------- | ---------- | --------- | ----------- |
+| Logistic regression (21 feats)   | 25        | 70.0%     | 0.758      | —         | —           |
+| Small 2D CNN (raw pixels)        | 93,377    | 87.9%     | 0.950      | 93.8%     | 0.985       |
+| **Tiny ViT** (8×8 patches)       | 1,829,761 | **88.6%** | **0.958**  | **95.4%** | **0.991**   |
 
 Both neural nets beat the logistic regression by ~+0.2 AUROC; the ViT edges the CNN
 by +0.008. The interesting detail is *why the gap opened up*: the logistic
@@ -37,6 +38,20 @@ regression is **saturated** — it scored 0.768 AUROC on an earlier 5k subset an
 neural nets climbed every epoch (CNN 0.814 → 0.950, ViT 0.868 → 0.958) and
 **neither had plateaued**, with val tracking train (no overfit). More data only
 helps the model with the capacity to absorb it.
+
+### Image-level calls: average the crops
+
+A single 64×64 crop is a noisy estimate of "is this image fake" — different
+regions carry different amounts of generator artifact. Averaging the 8 crop
+scores per image (free test-time ensembling, no retraining) roughly halves the
+error rate: CNN 87.9% → 93.8%, ViT 88.6% → 95.4%. The ViT's image-level
+confusion matrix over the 8,286 val images:
+
+```
+           pred_real  pred_fake
+  real          3945        198      (4.8% of reals flagged)
+  fake           181       3962      (4.4% of fakes missed)
+```
 
 The 21 hand-crafted features tell you what signal exists: the logistic regression
 leans hardest on `edge_R`, `noise_B`, `edge_G` — Sobel edge energy and noise
@@ -52,7 +67,9 @@ preprocess_images      # paired 64x64 crops, --fake-codec {jpeg,png}
                        #   -> cache_images/jpeg_full/{train,val}/shard-*.pt
 features_images        # 21 spatial features per crop -> features_*.npz   (for the LR)
 train_lr               # logistic-regression baseline
-train_cnn              # small CNN baseline (--model vit for a tiny ViT)
+train                  # small CNN baseline (--model vit for a tiny ViT)
+                       #   -> runs_images/<model>/{final.pt,metrics.json}
+eval                   # re-eval saved checkpoints: crop + image-level metrics
 ```
 
 Reproduce the comparison above:
@@ -65,7 +82,7 @@ uv run python -m src.preprocess_images \
 uv run python -m src.features_images --cache-dir cache_images/jpeg_full \
     --out cache_images/features_jpeg_full.npz
 uv run python -m src.train_lr  --features cache_images/features_jpeg_full.npz
-uv run python -m src.train_cnn --cache-dir cache_images/jpeg_full --epochs 6
+uv run python -m src.train --cache-dir cache_images/jpeg_full --epochs 6
 ```
 
 The 21 features (`features_images.py`): per-channel pixel mean/std, DCT

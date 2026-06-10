@@ -5,8 +5,8 @@ This trains a small CNN (or a tiny ViT) on the raw 3x64x64 pixels of the *same*
 crops, so the only thing that changes is "hand-crafted stats" vs "learned features."
 
 Usage:
-    python -m src.train_cnn --cache-dir cache_images/jpeg_full              # small CNN
-    python -m src.train_cnn --cache-dir cache_images/jpeg_full --model vit  # tiny ViT
+    python -m src.train --cache-dir cache_images/jpeg_full              # small CNN
+    python -m src.train --cache-dir cache_images/jpeg_full --model vit  # tiny ViT
 """
 
 import argparse
