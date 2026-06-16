@@ -2,7 +2,7 @@
 
 My driving idea comes from training GANs: detecting whether an image is the
 output of a generator model isn't actually very difficult. When you train a GAN
-you have to *balance* the generator and discriminator, and I kept noticing that
+you have to balance the generator and discriminator, and I kept noticing that
 a discriminator as large and powerful as the generator is a bad way to achieve
 that balance, it wildly outperforms the generator. The discriminator routinely
 separates real from fake off of errors that aren't perceptible to humans.
@@ -13,9 +13,9 @@ needed. I think small models operating on even small crops of images.
 
 # The Image Experiment
 
-**Task:** real-vs-fake on 3×64×64 image crops. Real = original COCO 2017 photos,
+Task: real-vs-fake on 3×64×64 image crops. Real = original COCO 2017 photos,
 fake = [FLUX.2-klein](https://huggingface.co/black-forest-labs) generations from
-those same COCO captions. **40,987 paired images**, aligned by id so a given
+those same COCO captions. 40,987 paired images, aligned by id so a given
 scene exists as both a real photo and its synthetic twin.
 
 
@@ -86,11 +86,11 @@ magnitude, and Sobel edge energy.
 ## Codec-matched preprocessing
 
 A naive setup leaks: COCO reals are JPEG, FLUX fakes are lossless PNG, so a
-detector can "win" by learning *PNG vs JPEG* instead of *generator artifacts*.
+detector can "win" by learning PNG vs JPEG instead of generator artifacts.
 `preprocess_images.py --fake-codec jpeg` re-encodes every fake to JPEG q90
 before cropping, matching the reals' single-pass JPEG. `--fake-codec png` is
 there for ablation.
 
-Crops are sampled with a **per-`image_id` seed** and the train/val split is a hash
-of `image_id`, so every crop of an image — real *and* fake — lands in the same
-split. Verified: **0 images shared between train and val.**
+Crops are sampled with a per-`image_id` seed and the train/val split is a hash
+of `image_id`, so every crop of an image — real and fake — lands in the same
+split. Verified: 0 images shared between train and val.
