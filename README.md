@@ -21,23 +21,17 @@ scene exists as both a real photo and its synthetic twin.
 
 ## Results — non-neural baseline vs. a small CNN
 
-All models see the *identical* crops: 589,504 train / 66,288 val (8 crops each
+All models see the identical crops: 589,504 train / 66,288 val (8 crops each
 of 8,286 val images), jpeg-matched. "Crop" columns score each 64×64 crop alone;
 "image" columns average the 8 crop scores per image before thresholding.
 
 | Model                            | Params    | Crop Acc  | Crop AUROC | Image Acc | Image AUROC |
 | -------------------------------- | --------- | --------- | ---------- | --------- | ----------- |
-| Logistic regression (21 feats)   | 25        | 70.0%     | 0.758      | —         | —           |
+| Logistic regression (21 feats)   | 25        | 70.0%     | 0.758      | 77.5%     | 0.847       |
 | Small 2D CNN (raw pixels)        | 93,377    | 87.9%     | 0.950      | 93.8%     | 0.985       |
 | **Tiny ViT** (8×8 patches)       | 1,829,761 | **88.6%** | **0.958**  | **95.4%** | **0.991**   |
 
-Both neural nets beat the logistic regression by ~+0.2 AUROC; the ViT edges the CNN
-by +0.008. The interesting detail is *why the gap opened up*: the logistic
-regression is **saturated** — it scored 0.768 AUROC on an earlier 5k subset and
-0.758 here, so 8× more data bought the 25-parameter linear model nothing. Both
-neural nets climbed every epoch (CNN 0.814 → 0.950, ViT 0.868 → 0.958) and
-**neither had plateaued**, with val tracking train (no overfit). More data only
-helps the model with the capacity to absorb it.
+Unlike in previous much smaller dataset runs, with the new data we are able to see a huge improvement by moving from the fixed feature logistic regression to a learned solution.
 
 ### Image-level calls: average the crops
 
